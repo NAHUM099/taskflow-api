@@ -83,7 +83,7 @@ class SecurityConfig(
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
 
-        configuration.allowedOrigins = listOf("http://localhost:3000")
+        configuration.allowedOrigins = listOf("http://localhost:3000", "https://taskflow-frontend-ashen.vercel.app")
         configuration.allowedMethods = listOf(
             "GET",
             "POST",
