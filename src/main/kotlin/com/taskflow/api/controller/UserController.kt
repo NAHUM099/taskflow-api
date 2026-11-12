@@ -6,6 +6,7 @@ import com.taskflow.api.dto.task.TaskResponse
 import com.taskflow.api.dto.user.CreateUserRequest
 import com.taskflow.api.dto.user.UpdatePasswordRequest
 import com.taskflow.api.dto.user.UpdateStatusUserRequest
+import com.taskflow.api.dto.user.UpdateUserPasswordRequest
 import com.taskflow.api.dto.user.UpdateUserRequest
 import com.taskflow.api.dto.user.UserResponse
 import com.taskflow.api.service.TaskService
@@ -71,6 +72,15 @@ class UserController (
         @Valid @RequestBody request: UpdateStatusUserRequest
     ) : UserResponse {
         return userService.updateUserStatus(id, request)
+    }
+
+    @PatchMapping("/users/{id}/password")
+    fun updateUserPassword(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: UpdateUserPasswordRequest
+    ) : ResponseEntity<Void> {
+        userService.updateUserPassword(id, request)
+        return ResponseEntity.noContent().build()
     }
 
     @PatchMapping("/users/me/password")
