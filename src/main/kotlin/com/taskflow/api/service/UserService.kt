@@ -4,6 +4,7 @@ import com.taskflow.api.auth.AuthService
 import com.taskflow.api.dto.user.CreateUserRequest
 import com.taskflow.api.dto.user.UpdatePasswordRequest
 import com.taskflow.api.dto.user.UpdateStatusUserRequest
+import com.taskflow.api.dto.user.UpdateUserPasswordRequest
 import com.taskflow.api.dto.user.UpdateUserRequest
 import com.taskflow.api.dto.user.UserResponse
 import com.taskflow.api.entity.UserEntity
@@ -144,6 +145,17 @@ class UserService (
         val newPassword = passwordEncoder.encode(request.newPassword)
 
         user.passwordHash = newPassword
+
+        userRepository.save(user)
+
+    }
+
+
+    fun updateUserPassword (id : Long, request : UpdateUserPasswordRequest) {
+
+        val user = findUserById(id)
+
+        user.passwordHash = passwordEncoder.encode(request.newPassword)
 
         userRepository.save(user)
 
