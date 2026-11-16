@@ -18,6 +18,7 @@ API REST para la gestión de tareas, usuarios y autenticación del proyecto Task
 - Gestión de usuarios.
 - Autenticación mediante JWT.
 - Gestión de tareas.
+- Aislamiento de tareas por rol: `USER` solo consulta y mueve sus tareas; `ADMIN` y `MODERATOR` ven todas.
 - Actualización del estado de las tareas.
 - Control de acceso según roles.
 

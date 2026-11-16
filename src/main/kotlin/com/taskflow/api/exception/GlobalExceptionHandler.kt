@@ -4,6 +4,7 @@ import com.taskflow.api.exception.classException.EmailAlreadyExistsException
 import com.taskflow.api.exception.classException.InValidPasswordException
 import com.taskflow.api.exception.classException.InactiveUserException
 import com.taskflow.api.exception.classException.InvalidStatusTransitionException
+import com.taskflow.api.exception.classException.TaskAccessDeniedException
 import com.taskflow.api.exception.classException.TaskNotFoundException
 import com.taskflow.api.exception.classException.UserDataException
 import com.taskflow.api.exception.classException.UserNotFoundException
@@ -116,6 +117,23 @@ class GlobalExceptionHandler {
 
         return ResponseEntity(
             response, HttpStatus.NOT_FOUND
+        )
+    }
+
+    @ExceptionHandler(TaskAccessDeniedException::class)
+    fun taskAccessDenied(
+        ex: TaskAccessDeniedException,
+        request: HttpServletRequest
+    ) : ResponseEntity<ErrorResponse> {
+        val response = ErrorResponse(
+            timestamp = LocalDateTime.now(),
+            status = HttpStatus.FORBIDDEN.value(),
+            message = ex.message ?: "No tienes permisos sobre esta tarea",
+            path = request.requestURI
+        )
+
+        return ResponseEntity(
+            response, HttpStatus.FORBIDDEN
         )
     }
 

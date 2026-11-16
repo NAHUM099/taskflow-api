@@ -4,9 +4,14 @@ import com.taskflow.api.dto.task.CreateTaskRequest
 import com.taskflow.api.dto.task.StatusRequest
 import com.taskflow.api.dto.task.TaskFilter
 import com.taskflow.api.dto.task.TaskResponse
+import com.taskflow.api.dto.task.TaskSummaryResponse
 import com.taskflow.api.enums.TaskStatus
 import com.taskflow.api.service.TaskService
 import jakarta.validation.Valid
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.data.web.PageableDefault
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,6 +38,8 @@ class TaskController (
 
     @PatchMapping("/tasks/{id}/status")
     fun statusTask(
+        authentication: Authentication,
+
         // pathVarible toma parametro de la url
         @PathVariable id: Long,
 
@@ -41,20 +48,33 @@ class TaskController (
         @Valid @RequestBody request: StatusRequest
     ): TaskResponse {
 
-        return taskService.patchStatusTask(id, request)
+        return taskService.patchStatusTask(id, request, authentication)
     }
 
     @GetMapping("/tasks")
     fun getTasks(
+        authentication: Authentication,
+
+        // Paginación estándar de Spring (?page=0&size=10). Por defecto, 10 tareas.
+        @PageableDefault(size = 10) pageable: Pageable,
 
         // Obtiene el estado desde los parámetros de la URL.
         // Al ser opcional (required = false), la petición puede realizarse sin enviar status.
         @RequestParam(required = false) status: TaskStatus?,
-        @RequestParam(required = false) userId: Long?
-    ): List<TaskResponse> {
+        @RequestParam(required = false) userId: Long?,
 
-        val param = TaskFilter(status, userId)
-        return taskService.getTasks(param)
+        // Búsqueda por nombre de tarea (coincidencia parcial, sin distinguir mayúsculas)
+        @RequestParam(required = false) search: String?
+    ): Page<TaskResponse> {
+
+        val param = TaskFilter(status, userId, search)
+        return taskService.getTasks(param, pageable, authentication)
+    }
+
+    @GetMapping("/tasks/summary")
+    fun getTasksSummary(authentication: Authentication): TaskSummaryResponse {
+
+        return taskService.getTasksSummary(authentication)
     }
 
 }

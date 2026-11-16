@@ -4,5 +4,6 @@ import com.taskflow.api.enums.TaskStatus
 
 data class TaskFilter (
     val status : TaskStatus?,
-    val userId : Long?
+    val userId : Long?,
+    val search : String? = null
 )
