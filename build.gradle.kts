@@ -33,6 +33,11 @@ dependencies {
     //database
     runtimeOnly("org.postgresql:postgresql")
 
+    //migraciones del esquema (versión gestionada por Spring Boot -> Flyway 11.7.2)
+    implementation("org.flywaydb:flyway-core")
+    //desde Flyway 10 el soporte de PostgreSQL vive en un módulo aparte
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+
     //rate limiting distribuido (opcional: solo se usa con login-rate-limit.store=redis)
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
