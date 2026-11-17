@@ -25,6 +25,9 @@ import javax.sql.DataSource
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        // La migración V1 es DDL de PostgreSQL: en H2 el esquema lo sigue
+        // creando Hibernate. Flyway se prueba con PostgreSQL real (ver README).
+        "spring.flyway.enabled=false",
         "jwt.secret=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
     ]
 )

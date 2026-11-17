@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class UserService (
@@ -162,10 +163,15 @@ class UserService (
     }
 
 
+    @Transactional
     fun deleteUser (id : Long) {
 
         val existingUser = findUserById(id)
         userRepository.delete(existingUser)
 
+        // Fuerza el DELETE dentro de la transacción: si el usuario tiene tareas
+        // asociadas, la violación de la clave foránea se lanza aquí y el manejo
+        // centralizado la traduce a 409 (sin borrar nada).
+        userRepository.flush()
     }
 }
