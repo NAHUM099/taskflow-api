@@ -33,13 +33,19 @@ dependencies {
     //database
     runtimeOnly("org.postgresql:postgresql")
 
+    //rate limiting distribuido (opcional: solo se usa con login-rate-limit.store=redis)
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+
     //development
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
     //testing
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	testImplementation("org.springframework.security:spring-security-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+	// base de datos en memoria para el test de carga de contexto
+	testRuntimeOnly("com.h2database:h2")
 
     //JWT
     implementation("io.jsonwebtoken:jjwt-api:0.12.7")

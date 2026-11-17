@@ -6,12 +6,15 @@ import com.taskflow.api.exception.classException.InactiveUserException
 import com.taskflow.api.exception.classException.InvalidStatusTransitionException
 import com.taskflow.api.exception.classException.TaskAccessDeniedException
 import com.taskflow.api.exception.classException.TaskNotFoundException
+import com.taskflow.api.exception.classException.TooManyLoginAttemptsException
 import com.taskflow.api.exception.classException.UserDataException
 import com.taskflow.api.exception.classException.UserNotFoundException
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.authentication.DisabledException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ControllerAdvice
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -191,6 +194,26 @@ class GlobalExceptionHandler {
         )
     }
 
+    @ExceptionHandler(DisabledException::class)
+    fun disabledException(
+        request: HttpServletRequest
+    ) : ResponseEntity<ErrorResponse> {
+
+        // Caso conocido del proceso de login: cuenta desactivada. Se responde
+        // 401 con el mismo mensaje genérico que unas credenciales incorrectas
+        // para no revelar el estado de la cuenta.
+        val response = ErrorResponse(
+            timestamp = LocalDateTime.now(),
+            status = HttpStatus.UNAUTHORIZED.value(),
+            message = "usuario o contraseña incorrecto",
+            path = request.requestURI
+        )
+
+        return ResponseEntity(
+            response, HttpStatus.UNAUTHORIZED
+        )
+    }
+
     @ExceptionHandler(InactiveUserException::class)
     fun inactiveException (
         ex: InactiveUserException,
@@ -221,6 +244,27 @@ class GlobalExceptionHandler {
             path = request.requestURI
         )
         return ResponseEntity(response, HttpStatus.CONFLICT)
+    }
+
+    @ExceptionHandler(TooManyLoginAttemptsException::class)
+    fun tooManyLoginAttempts(
+        ex: TooManyLoginAttemptsException,
+        request: HttpServletRequest
+    ) : ResponseEntity<ErrorResponse> {
+
+        // Rate limiting del login: se informa cuándo reintentar sin revelar si
+        // el correo existe ni el estado de la cuenta.
+        val response = ErrorResponse(
+            timestamp = LocalDateTime.now(),
+            status = HttpStatus.TOO_MANY_REQUESTS.value(),
+            message = "Demasiados intentos de inicio de sesión. Inténtalo de nuevo en ${ex.retryAfterSeconds} segundos.",
+            path = request.requestURI
+        )
+
+        return ResponseEntity
+            .status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, ex.retryAfterSeconds.toString())
+            .body(response)
     }
 
 }

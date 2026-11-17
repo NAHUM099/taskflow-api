@@ -1,12 +1,17 @@
 package com.taskflow.api.service
 
+import com.taskflow.api.dto.user.CreateUserRequest
 import com.taskflow.api.dto.user.UpdateUserPasswordRequest
 import com.taskflow.api.entity.UserEntity
+import com.taskflow.api.enums.UserRoles
+import com.taskflow.api.exception.classException.EmailAlreadyExistsException
 import com.taskflow.api.exception.classException.UserNotFoundException
 import com.taskflow.api.repository.UserRepository
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -44,6 +49,34 @@ class UserServiceTest {
 
         assertThrows(UserNotFoundException::class.java) {
             userService.updateUserPassword(99, UpdateUserPasswordRequest("nuevaClave123"))
+        }
+
+        verify(userRepository, never()).save(any(UserEntity::class.java))
+    }
+
+    @Test
+    fun `createUser persiste siempre el rol USER`() {
+        val request = CreateUserRequest("Ana Torres", "ana@taskflow.dev", "secreta123")
+        `when`(userRepository.findByEmail(request.email)).thenReturn(null)
+        `when`(userRepository.save(any(UserEntity::class.java)))
+            .thenAnswer { it.arguments[0] as UserEntity }
+
+        userService.createUser(request)
+
+        val captor = ArgumentCaptor.forClass(UserEntity::class.java)
+        verify(userRepository).save(captor.capture())
+        assertEquals(UserRoles.USER, captor.value.role)
+        assertTrue(passwordEncoder.matches("secreta123", captor.value.passwordHash))
+    }
+
+    @Test
+    fun `createUser rechaza un email duplicado y no guarda`() {
+        val request = CreateUserRequest("Ana Torres", "ana@taskflow.dev", "secreta123")
+        `when`(userRepository.findByEmail(request.email))
+            .thenReturn(UserEntity(id = 1, email = request.email))
+
+        assertThrows(EmailAlreadyExistsException::class.java) {
+            userService.createUser(request)
         }
 
         verify(userRepository, never()).save(any(UserEntity::class.java))

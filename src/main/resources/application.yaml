@@ -11,9 +11,30 @@ spring:
     hibernate:
       ddl-auto: update
 
+  # Solo se usa cuando taskflow.security.login-rate-limit.store=redis.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
 jwt:
   secret: ${JWT_SECRET}
   expiration: 3600000
+
+taskflow:
+  security:
+    # Rate limiting del endpoint /auth/login.
+    login-rate-limit:
+      enabled: ${LOGIN_RATE_LIMIT_ENABLED:true}
+      window: ${LOGIN_RATE_LIMIT_WINDOW:5m}
+      max-attempts-per-account: ${LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_ACCOUNT:5}
+      max-attempts-per-ip: ${LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP:30}
+      # Activar solo si hay un proxy de confianza delante (Railway, Render, nginx...).
+      trust-forwarded-headers: ${LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+      # memory = estado por instancia; redis = estado compartido entre réplicas.
+      store: ${LOGIN_RATE_LIMIT_STORE:memory}
 
 server:
   port: ${PORT:8080}

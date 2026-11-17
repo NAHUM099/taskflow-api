@@ -19,7 +19,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
 class SecurityConfig(
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val securityErrorHandler: SecurityErrorHandler
 ) {
 
     @Bean
@@ -55,11 +56,11 @@ class SecurityConfig(
             .cors { it.configurationSource(corsConfigurationSource()) }
             .csrf { it.disable() }
             .authorizeHttpRequests {
-                // Aquí definimos qué rutas son públicas. 
-                it.requestMatchers(org.springframework.http.HttpMethod.POST, "/users").permitAll()
-                it.requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/login").permitAll() 
-                
-                // Módulo de usuarios: solo ADMIN
+                // Única ruta pública: el login. El alta de usuarios NO es pública:
+                // crear cuentas exige un JWT con ROLE_ADMIN (ver regla siguiente).
+                it.requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+
+                // Módulo de usuarios (incluye POST /users): solo ADMIN.
                 it.requestMatchers("/users/**").hasRole("ADMIN")
 
                 //Creacion de tareas solo ADMIN y MODERATOR
@@ -67,6 +68,13 @@ class SecurityConfig(
 
                 // Todo lo demas cerrado bajo llave
                 it.anyRequest().authenticated()
+            }
+            .exceptionHandling {
+                // 401 para peticiones sin autenticación válida (token ausente,
+                // malformado, expirado o con firma inválida) y 403 para usuarios
+                // autenticados sin permisos.
+                it.authenticationEntryPoint(securityErrorHandler)
+                it.accessDeniedHandler(securityErrorHandler)
             }
             .sessionManagement {
                 // Le decimos a Spring que no guarde sesiones (state), todo lo manejará el JWT
