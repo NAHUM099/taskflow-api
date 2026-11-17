@@ -143,6 +143,27 @@ class ExceptionHandlingEndpointTest {
             .andExpect(content().string(not(containsString("User is disabled"))))
     }
 
+    @Test
+    fun `un Content-Type no soportado devuelve 415 y no 500`() {
+        mockMvc.perform(
+            post("/probe/users")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content("name=Ana")
+        )
+            .andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.status").value(415))
+            .andExpect(jsonPath("$.message").value("Tipo de contenido no soportado"))
+            .andExpect(jsonPath("$.path").value("/probe/users"))
+            .andExpect(content().string(not(containsString("text/plain"))))
+    }
+
+    @Test
+    fun `un Accept no soportado devuelve 406 sin cuerpo y no 500`() {
+        mockMvc.perform(get("/probe/dto").accept(MediaType.APPLICATION_XML))
+            .andExpect(status().isNotAcceptable)
+            .andExpect(content().string(""))
+    }
+
     /**
      * Controlador mínimo que reproduce cada escenario sin tocar la lógica real.
      */
@@ -154,6 +175,9 @@ class ExceptionHandlingEndpointTest {
 
         @GetMapping("/probe/tasks")
         fun tasks(@RequestParam(required = false) status: TaskStatus?): String = "ok"
+
+        @GetMapping("/probe/dto")
+        fun dto(): Map<String, Any> = mapOf("id" to 1, "message" to "ok")
 
         @GetMapping("/probe/required")
         fun required(@RequestParam q: String): String = "ok"

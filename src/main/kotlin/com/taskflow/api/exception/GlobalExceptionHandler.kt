@@ -21,6 +21,8 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.DisabledException
 import org.springframework.security.authentication.InternalAuthenticationServiceException
 import org.springframework.security.core.AuthenticationException
+import org.springframework.web.HttpMediaTypeNotAcceptableException
+import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
@@ -358,6 +360,50 @@ class GlobalExceptionHandler {
     ) : ResponseEntity<ErrorResponse> {
 
         return errorResponse(request, HttpStatus.METHOD_NOT_ALLOWED, "Metodo HTTP no soportado")
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException::class)
+    fun mediaTypeNotSupported(
+        ex: HttpMediaTypeNotSupportedException,
+        request: HttpServletRequest
+    ) : ResponseEntity<ErrorResponse> {
+
+        // 415: el Content-Type enviado no lo consume ningún endpoint. El mensaje
+        // de Spring incluye el tipo recibido y los tipos aceptados: se registra
+        // en el servidor y no se devuelve al cliente.
+        logger.warn(
+            "Content-Type no soportado en {} {}: {}",
+            request.method,
+            request.requestURI,
+            ex.message
+        )
+
+        return errorResponse(
+            request,
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            "Tipo de contenido no soportado"
+        )
+    }
+
+    /**
+     * 406: el cliente no acepta `application/json`, así que intentar escribir un
+     * `ErrorResponse` volvería a lanzar la misma excepción (500 y, tras el
+     * dispatch a `/error`, un 401 engañoso). Se responde sin cuerpo.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException::class)
+    fun mediaTypeNotAcceptable(
+        ex: HttpMediaTypeNotAcceptableException,
+        request: HttpServletRequest
+    ) : ResponseEntity<Void> {
+
+        logger.warn(
+            "Formato de respuesta no soportado en {} {}: {}",
+            request.method,
+            request.requestURI,
+            ex.message
+        )
+
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).build()
     }
 
     @ExceptionHandler(NoResourceFoundException::class)
