@@ -1,367 +1,258 @@
 # TaskFlow API
 
-API REST para la gestión de tareas, usuarios y autenticación del proyecto TaskFlow.
+**Backend REST de TaskFlow**: gestión de tareas y usuarios con autenticación JWT, autorización por
+roles y esquema versionado con Flyway.
+**Kotlin · Spring Boot 3.5 · PostgreSQL**
 
-## Tecnologías
+| Recurso | Enlace |
+| --- | --- |
+| **API desplegada** (Render) | https://taskflow-api-ycus.onrender.com |
+| **Aplicación web** (Vercel) | https://taskflow-frontend-ashen.vercel.app |
+| **Repositorio del frontend** | https://github.com/NAHUM099/taskflow-frontend |
+| **Capturas de la aplicación** | [taskflow-frontend › Capturas](https://github.com/NAHUM099/taskflow-frontend#capturas) |
 
-- Kotlin
-- Spring Boot
-- Spring Security
-- Spring Data JPA / Hibernate
-- PostgreSQL
-- Flyway (migraciones versionadas del esquema)
-- JWT
-- Gradle
-- Docker y Jenkins para integración continua
+> La API está en el plan gratuito de Render, que suspende la instancia por inactividad: la primera
+> petición tras un periodo sin tráfico puede tardar hasta un minuto en responder.
+
+---
+
+## Qué resuelve
+
+Gestionar tareas en equipo sin montar una plataforma grande: cada persona ve y mueve sus propias
+tareas, los moderadores pueden crear tareas para cualquiera y solo un administrador gestiona las
+cuentas. TaskFlow cubre ese flujo completo en una API pequeña pero con las decisiones que importan
+en un entorno real: autenticación sin estado, permisos por rol, contrato de errores uniforme,
+esquema versionado y límite de intentos de login.
+
+Este repositorio es el backend; la interfaz web vive en
+[taskflow-frontend](https://github.com/NAHUM099/taskflow-frontend).
 
 ## Funcionalidades
 
-- Gestión de usuarios.
-- Autenticación mediante JWT.
-- Gestión de tareas.
-- Aislamiento de tareas por rol: `USER` solo consulta y mueve sus tareas; `ADMIN` y `MODERATOR` ven todas.
-- Actualización del estado de las tareas.
-- Control de acceso según roles.
+- **Autenticación JWT** stateless (`POST /auth/login` es la única ruta pública) y contraseñas
+  cifradas con BCrypt.
+- **Autorización por roles** `USER` / `MODERATOR` / `ADMIN`, con `401` y `403` correctamente
+  separados. Un `USER` solo accede a sus propias tareas.
+- **Tareas**: listado paginado, búsqueda por título, filtro por estado y por usuario, resumen de
+  indicadores (total, pendientes, en progreso, completadas, canceladas), alta de tareas y cambio de
+  estado con transiciones validadas.
+- **Usuarios** (solo `ADMIN`): listado paginado con búsqueda, alta, edición, cambio de contraseña,
+  activación/desactivación y borrado protegido por la clave foránea de sus tareas.
+- **Rate limiting del login** por `(IP, email)` y por `IP`, con almacén en memoria o Redis.
+- **Contrato de errores único** (`ErrorResponse`) para validación, seguridad, conflictos e
+  integridad de datos, sin filtrar detalles internos.
+- **Migraciones Flyway** versionadas; Hibernate solo valida el esquema (`ddl-auto: validate`).
 
-## Seguridad
+## Stack
 
-### Reglas de acceso
-
-- `POST /auth/login` es la única ruta pública.
-- `/users/**`, incluido `POST /users`, requiere `ROLE_ADMIN`: **el registro público está deshabilitado**.
-- `POST /tasks` requiere `ROLE_ADMIN` o `ROLE_MODERATOR`.
-- Cualquier otra ruta requiere un JWT válido.
-- Las respuestas de seguridad respetan el formato `ErrorResponse`: `401` cuando la petición no
-  lleva autenticación válida (token ausente, malformado, expirado o de usuario inactivo) y `403`
-  cuando el usuario está autenticado pero no tiene permisos.
-
-### Alta de usuarios (`POST /users`)
-
-Solo un `ADMIN` autenticado puede crear cuentas. El cuerpo (`CreateUserRequest`) no incluye el
-campo `role`: si el cliente envía `role` en el JSON se ignora y el backend asigna siempre
-`ROLE_USER` (`UserMapper.toEntity`). La promoción a otro rol se hace fuera de la API (base de
-datos), nunca manipulando la petición. Se mantienen las validaciones (`@NotBlank`, `@Email`,
-`@Size(min = 6)`) y la unicidad del correo (`409 Conflict`).
-
-### Rate limiting del login
-
-`/auth/login` limita los intentos fallidos con una ventana fija. Se usan dos contadores
-independientes:
-
-- `(IP, email)`: `max-attempts-per-account` intentos fallidos por ventana.
-- `IP`: `max-attempts-per-ip` intentos fallidos por ventana, aunque cambie el email.
-
-Al superar el límite se responde `429 Too Many Requests` con header `Retry-After` y un
-`ErrorResponse` genérico, sin revelar si la cuenta existe ni su estado. La ventana caduca sola, de
-modo que el bloqueo siempre es temporal. Un login correcto libera el contador de la pareja
-`(IP, email)`; el contador por IP no se reinicia para que un atacante con cuenta propia no recupere
-su cuota. La clave nunca es solo el email, así que un tercero no puede bloquear la cuenta de otra
-persona desde su propia IP.
-
-El almacén de los contadores es intercambiable (`LoginAttemptStore`):
-
-| `store` | Implementación | Cuándo usarlo |
-| --- | --- | --- |
-| `memory` (por defecto) | `LoginAttemptTracker` | Una sola instancia; sin infraestructura extra |
-| `redis` | `RedisLoginAttemptStore` | Varias réplicas: el límite pasa a ser global (`INCR` + `EXPIRE`) |
-
-Configuración en `application.yaml`, ajustable por entorno:
-
-| Variable | Por defecto | Descripción |
-| --- | --- | --- |
-| `LOGIN_RATE_LIMIT_ENABLED` | `true` | Activa o desactiva el límite |
-| `LOGIN_RATE_LIMIT_WINDOW` | `5m` | Tamaño de la ventana (`Duration`: `30s`, `5m`, `1h`) |
-| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_ACCOUNT` | `5` | Intentos fallidos por `(IP, email)` y ventana |
-| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP` | `30` | Intentos fallidos por IP y ventana |
-| `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS` | `false` | Lee `X-Forwarded-For`; activar solo detrás de un proxy de confianza |
-| `LOGIN_RATE_LIMIT_STORE` | `memory` | `memory` o `redis` |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / vacío | Solo se usan con `store=redis` |
-
-Limitaciones conocidas:
-
-- Con `store=memory` el estado es **por instancia**: con varias réplicas el límite no es global. Por
-  eso existe `store=redis`; la dependencia (`spring-boot-starter-data-redis`) está siempre en el
-  classpath, pero si no se activa no se abre ninguna conexión.
-- Si Redis no responde, el limiter aplica *fail-open* (`WARN` en el log y el login sigue): una caída
-  del caché no debe dejar a todo el mundo sin poder entrar.
-- Si el backend está detrás de un proxy, `remoteAddr` es la IP del proxy. En ese caso hay que
-  activar `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS=true`; activarlo sin proxy permite falsificar
-  el header y eludir el límite.
-
-## Base de datos y migraciones (Flyway)
-
-El esquema de PostgreSQL lo administra **Flyway**; Hibernate queda en
-`spring.jpa.hibernate.ddl-auto: validate`, así que comprueba que las entidades coinciden con las
-tablas pero **nunca** crea ni modifica el esquema.
-
-- Las migraciones versionadas viven en `src/main/resources/db/migration`
-  (`V1__initial_schema.sql`, `V2__...`, ...) y se aplican al arrancar la aplicación.
-- `V1__initial_schema.sql` reproduce el esquema que creó Hibernate con `ddl-auto: update`: tablas
-  `users` y `tasks`, identidad en las claves primarias, `UNIQUE (email)`, la clave foránea
-  `tasks.user_id -> users.id` y la CHECK de `tasks.status`. Se conservan los nombres físicos de
-  las constraints para que una base nueva y una existente queden idénticas.
-- Cada migración aplicada queda registrada en `flyway_schema_history` (versión, checksum, fecha y
-  resultado). Si un checksum cambia, el arranque falla en lugar de aplicar algo distinto.
-
-### Base de datos nueva
-
-Con la base vacía basta arrancar:
-
-```powershell
-.\gradlew.bat bootRun
-```
-
-Flyway aplica `V1` (y las siguientes en orden) y después Hibernate valida el esquema.
-
-### Base de datos existente (adopción con baseline)
-
-TaskFlow ya tenía datos antes de Flyway. **No se ejecuta `V1` sobre una base existente** y no se
-borra nada: se marca la versión 1 como línea base y Flyway administra a partir de la siguiente
-migración.
-
-1. Haz una copia de seguridad (`pg_dump`).
-2. Comprueba que el esquema existente coincide con `V1` (tablas, columnas, tipos, nulabilidad,
-   PK, UNIQUE, CHECK y FK):
-
-   ```sql
-   SELECT table_name, column_name, data_type, is_nullable, column_default
-   FROM information_schema.columns
-   WHERE table_schema = 'public' AND table_name IN ('users', 'tasks')
-   ORDER BY table_name, ordinal_position;
-
-   SELECT c.relname AS tabla, co.conname, co.contype, pg_get_constraintdef(co.oid)
-   FROM pg_constraint co
-   JOIN pg_class c ON c.oid = co.conrelid
-   WHERE c.relname IN ('users', 'tasks');
-   ```
-
-3. Arranca **una sola vez** con el baseline activado:
-
-   ```powershell
-   $env:FLYWAY_BASELINE_ON_MIGRATE = "true"
-   .\gradlew.bat bootRun
-   ```
-
-   Se crea `flyway_schema_history` con la fila `1 | BASELINE` y **no se ejecuta ningún DDL**.
-
-4. Elimina la variable y arranca de nuevo: Flyway valida y aplica las migraciones posteriores.
-
-`baseline-on-migrate` está **desactivado por defecto** (`FLYWAY_BASELINE_ON_MIGRATE=false`) y no
-debe quedar activo de forma permanente: es una decisión puntual y manual.
-
-Garantías comprobadas por los tests de integración:
-
-- Flyway solo hace baseline de esquemas **no vacíos**: una base vacía aplica `V1` normalmente y
-  nunca queda marcada como "ya inicializada".
-- Sin baseline, una base no vacía sin historial aborta el arranque **sin tocar nada**.
-- Si el esquema no coincide con las entidades, Hibernate `validate` detiene el arranque y no
-  repara el esquema por su cuenta.
-- Limitación conocida: un esquema *parcialmente* creado (por ejemplo solo `users`) también se
-  marca como línea base. Flyway no puede saber si el esquema está completo: la fila `1 | BASELINE`
-  se escribe **antes** de que Hibernate valide y su `checksum` es `NULL`, de modo que no hay forma
-  automática de detectar el desfase. Por eso el paso 2 es obligatorio.
-
-#### Baseline aplicado sobre un esquema incompleto (recuperación)
-
-Si el paso 3 se ejecutó sobre un esquema incompleto, el arranque falla en la validación de
-Hibernate (`Schema-validation: missing table [tasks]`) **pero la fila de baseline ya está
-registrada**:
-
-```sql
-SELECT installed_rank, version, description, type, success, checksum
-FROM flyway_schema_history;
--- 1 | 1 | esquema previo a Flyway | BASELINE | t | (NULL)
-```
-
-Consecuencias:
-
-- La fila **permanece** aunque Hibernate detenga el arranque: Flyway confirma el historial antes de
-  que se inicialice JPA, así que no se revierte con el fallo.
-- **Desactivar `baseline-on-migrate` después no lo soluciona**: la versión 1 ya figura en el
-  historial, por lo que Flyway informa `Schema "public" is up to date. No migration necessary.` y
-  **nunca** ejecuta `V1`; el error de validación se repite en cada arranque.
-- El `checksum` de `BASELINE` es `NULL`, así que `validate` tampoco detecta que el esquema no
-  coincide con `V1`.
-- Tampoco sirve borrar solo `flyway_schema_history`: sobre un esquema no vacío Flyway aborta con
-  `Found non-empty schema(s) "public" but no schema history table` y no modifica nada (en PostgreSQL
-  el DDL de Flyway es transaccional, ni siquiera recrea el historial).
-
-Recuperación segura (elegir **una** opción y no editar checksums ni la tabla de historial):
-
-| Situación | Procedimiento |
+| Pieza | Tecnología |
 | --- | --- |
-| Solo existe la fila `BASELINE` (ninguna fila con `type` = `SQL`) y el esquema se puede restaurar desde `pg_dump` o recrear vacío | Restaurar la copia con `pg_restore` (o recrear la base vacía), ejecutar `DROP TABLE flyway_schema_history;` y arrancar **sin** baseline: `.\gradlew.bat bootRun` aplica `V1` completo. |
-| Solo existe la fila `BASELINE` (ninguna fila con `type` = `SQL`) y no hay copia de seguridad, pero los datos existentes deben conservarse | Completar **a mano** los objetos que falten exactamente como `V1` (tablas, columnas, tipos, nulabilidad, PK, UNIQUE, CHECK y FK con los mismos nombres físicos) y **conservar** la fila `BASELINE`. El esquema queda equivalente a `V1` y las migraciones posteriores se aplican con normalidad. |
-| Ya se aplicaron migraciones posteriores (`V2` en adelante) | **Restaurar la copia de seguridad** y repetir el baseline con el esquema ya verificado. No borrar el historial: se perdería el registro de migraciones aplicadas sobre datos reales. |
+| Lenguaje / runtime | Kotlin 1.9.25 · JDK 21 |
+| Framework | Spring Boot 3.5.14 (Web MVC, Security, Data JPA, Validation) |
+| Persistencia | PostgreSQL · Hibernate (`validate`) · Flyway 11.7.2 |
+| Autenticación | JWT con JJWT 0.12.7 · BCrypt |
+| Rate limiting | `spring-boot-starter-data-redis` (opcional, `store=redis`) |
+| Build | Gradle 8.14.4 (wrapper incluido) |
+| Pruebas | JUnit 5 · Spring Boot Test · Spring Security Test · H2 (solo test de contexto) |
 
-`DROP TABLE flyway_schema_history` **solo es seguro** en el primer caso: historial con únicamente la
-fila `BASELINE` y un esquema que se va a restaurar o recrear por completo antes de volver a arrancar.
-Si existen filas `SQL`, borrar la tabla obliga a Flyway a empezar de cero, `V1` falla con
-`relation "users" already exists` y el arranque queda bloqueado.
-
-> Comprobado empíricamente: baselinar un esquema con solo `users` deja `1 | BASELINE` registrada,
-> Hibernate aborta con `missing table [tasks]`, y el arranque siguiente (con baseline desactivado)
-> responde `Schema "public" is up to date. No migration necessary.` seguido del mismo error. Tras
-> completar la tabla `tasks` con los objetos de `V1`, la aplicación arranca y valida el esquema.
-
-### Compatibilidad con PostgreSQL 18
-
-Flyway 11.7.2 (la versión que fija Spring Boot) declara soporte oficial hasta PostgreSQL 17 y en
-cada arranque registra:
+## Arquitectura
 
 ```
-WARN ... PostgreSQL 18.1 is newer than this version of Flyway and support has not been tested.
-The latest supported version of PostgreSQL is 17.
+Cliente (taskflow-frontend)
+        │  HTTPS + JWT (Authorization: Bearer ...)
+        ▼
+JwtAuthenticationFilter ──► SecurityFilterChain (roles)
+        ▼
+Controller  ──►  Service  ──►  Repository  ──►  PostgreSQL
+   DTOs         reglas         Spring Data      esquema Flyway
+                de negocio      JPA
 ```
 
-Es una advertencia, no un fallo: las migraciones y los tests de integración pasan contra PostgreSQL
-18.1 (baseline, `V1`, validación de Hibernate y los escenarios de integración). Aun así, **una
-prueba empírica satisfactoria no equivale a soporte oficial**: ante cualquier comportamiento
-anómalo de las migraciones la referencia es la matriz de compatibilidad de Flyway, no esta
-comprobación. Actualizar Flyway queda fuera de esta entrega.
+- **`controller`**: expone los endpoints y traduce peticiones a DTOs; sin lógica de negocio.
+- **`service`**: reglas de negocio, control de acceso a nivel de recurso y transacciones.
+- **`repository`**: acceso a datos con Spring Data JPA (paginación y búsquedas derivadas).
+- **`security`**: filtro JWT, provisión de usuarios, rate limiting y manejo de `401`/`403`.
+- **`exception`**: `GlobalExceptionHandler` convierte cualquier excepción en `ErrorResponse`.
+- **`db/migration`**: migraciones Flyway, única fuente de verdad del esquema.
 
-### Ver el estado de las migraciones
+La arquitectura de la aplicación completa está descrita en
+[docs/architecture.md](https://github.com/NAHUM099/taskflow-frontend/blob/main/docs/architecture.md)
+del repositorio del frontend.
 
-```sql
-SELECT installed_rank, version, description, type, success, installed_on
-FROM flyway_schema_history
-ORDER BY installed_rank;
-```
+## Endpoints
 
-| Variable | Por defecto | Uso |
+| Método | Ruta | Acceso |
 | --- | --- | --- |
-| `FLYWAY_ENABLED` | `true` | Desactiva Flyway (solo lo usa el test de contexto con H2) |
-| `FLYWAY_BASELINE_ON_MIGRATE` | `false` | Adopción manual y puntual de una base existente |
+| `POST` | `/auth/login` | Público |
+| `GET` | `/users` · `/users/{id}` · `/users/{id}/tasks` | `ADMIN` |
+| `POST` | `/users` | `ADMIN` |
+| `PATCH` | `/users/{id}` · `/users/{id}/status` · `/users/{id}/password` | `ADMIN` |
+| `PATCH` | `/users/me/password` | `ADMIN` (hereda la regla `/users/**`) |
+| `DELETE` | `/users/{id}` | `ADMIN` |
+| `GET` | `/tasks` (`page`, `size`, `sort`, `status`, `userId`, `search`) | Autenticado (un `USER` solo ve las suyas) |
+| `GET` | `/tasks/summary` | Autenticado (un `USER` solo ve las suyas) |
+| `PATCH` | `/tasks/{id}/status` | Autenticado (un `USER` solo las suyas) |
+| `POST` | `/tasks` | `ADMIN`, `MODERATOR` |
 
-## Manejo centralizado de errores
-
-`GlobalExceptionHandler` (`@ControllerAdvice`) traduce todas las excepciones al mismo formato
-`ErrorResponse` (`timestamp`, `status`, `message`, `path`, `details`). El frontend solo lee
-`message` y el código HTTP, así que el contrato no cambia.
-
-| Excepción | HTTP | Respuesta |
-| --- | --- | --- |
-| `MethodArgumentNotValidException` | 400 | `Error de validacion` + `details[campo]` |
-| `ConstraintViolationException` | 400 | `Error de validacion` + `details[campo]` |
-| `MethodArgumentTypeMismatchException` | 400 | Parámetro con valor no convertible (`?status=XX`) |
-| `MissingServletRequestParameterException` | 400 | Falta un parámetro obligatorio |
-| `HttpMessageNotReadableException` | 400 | JSON/enum no legible |
-| `UserDataException`, `InvalidStatusTransitionException` | 400 | Reglas de negocio |
-| `BadCredentialsException` | 401 | `usuario o contraseña incorrecto` |
-| `DisabledException` | 401 | Mismo mensaje genérico: no revela el estado de la cuenta |
-| `AuthenticationException` (resto) | 401 | Mensaje genérico |
-| `AccessDeniedException` | 403 | `No tienes permisos para realizar esta acción` |
-| `TaskAccessDeniedException` | 403 | Mensaje de la tarea |
-| `UserNotFoundException`, `TaskNotFoundException` | 404 | Mensaje del recurso |
-| `NoResourceFoundException` | 404 | `Recurso no encontrado` |
-| `HttpRequestMethodNotSupportedException` | 405 | `Metodo HTTP no soportado` |
-| `HttpMediaTypeNotAcceptableException` | 406 | Sin cuerpo: el cliente no acepta `application/json` |
-| `HttpMediaTypeNotSupportedException` | 415 | `Tipo de contenido no soportado` (`Content-Type` no consumido) |
-| `EmailAlreadyExistsException` | 409 | `email ya existente` |
-| `InactiveUserException`, `InValidPasswordException` | 409 | Reglas de negocio |
-| `DataIntegrityViolationException` | 409 / 400 | Traducida por SQLState (ver abajo) |
-| `TooManyLoginAttemptsException` | 429 | `Retry-After` en segundos |
-| `InternalAuthenticationServiceException` | 500 | Fallo del servidor durante la autenticación |
-| `Exception` (resto) | 500 | `Ocurrió un error en el servidor` |
-
-### Integridad de datos
-
-`DataIntegrityViolationException` se traduce por `SQLState` para no convertir todos los errores de
-persistencia en `409`:
-
-| SQLState | Caso | HTTP |
-| --- | --- | --- |
-| `23505` | `UNIQUE (email)` | 409 `email ya existente` |
-| `23505` | Otra restricción UNIQUE | 409 `Los datos enviados ya existen` |
-| `23503` | Usuario con tareas (FK) | 409 `El usuario tiene tareas asociadas y no se puede eliminar` |
-| `23502` | NOT NULL | 400 faltan datos obligatorios |
-| `23514` | CHECK | 400 datos fuera de una restricción del modelo |
-| `22001` | Longitud excedida | 400 dato demasiado largo |
-| otro | Sin clasificar | 409 conflicto de integridad genérico |
-
-`DELETE /users/{id}` es transaccional (`@Transactional` + `flush`): la violación de la clave
-foránea se lanza dentro de la transacción, se revierte por completo y el cliente recibe `409` sin
-que se borre ni modifique nada.
-
-### Qué no se expone nunca
-
-- No se devuelven mensajes de PostgreSQL/Hibernate, sentencias SQL, nombres de constraints,
-  stack traces ni rutas de clases internas.
-- El detalle completo (con traza) se registra en el log del servidor con `ERROR`.
-- `details` solo contiene `nombre de campo -> mensaje de validación`.
-
-## Requisitos
-
-- Java 21
-- PostgreSQL
-- Gradle Wrapper incluido en el proyecto.
-
-## Configuración
-
-La aplicación utiliza variables de entorno para configurar la conexión a la base de datos y la autenticación.
-
-Variables necesarias:
-
-- `DB_USERNAME`: usuario de PostgreSQL.
-- `DB_PASSWORD`: contraseña de PostgreSQL.
-- `JWT_SECRET`: secreto utilizado para firmar los tokens JWT.
-
-La configuración de la base de datos se encuentra en `application.yaml`.
+Filtros, paginación y forma de las respuestas:
+[api-contracts.md](https://github.com/NAHUM099/taskflow-frontend/blob/main/docs/api-contracts.md).
 
 ## Ejecución local
 
-Configura las variables de entorno y asegúrate de que PostgreSQL esté disponible en la dirección definida en la configuración.
+### Requisitos
 
-En Windows, ejecuta:
+| Herramienta | Versión | Comprobación |
+| --- | --- | --- |
+| JDK | **21** (el `build.gradle.kts` fija la toolchain en 21) | `java -version` |
+| PostgreSQL | 14 o superior (probado con 18) | `psql --version` |
+| Gradle | No hace falta instalarlo: usa el wrapper incluido | `.\gradlew.bat -v` |
+
+### 1. Base de datos
+
+Crea la base de datos. El proyecto apunta al puerto **5434** por defecto para no chocar con la
+instalación estándar (5432):
+
+```sql
+CREATE DATABASE taskflow;
+```
+
+Si tu PostgreSQL escucha en otro puerto, define `SPRING_DATASOURCE_URL` (ver
+[Variables de entorno](#variables-de-entorno)) en lugar de tocar el código.
+
+### 2. Variables de entorno
+
+`DB_USERNAME`, `DB_PASSWORD` y `JWT_SECRET` son obligatorias: la aplicación no arranca sin ellas.
+La plantilla con todas las variables y sus valores por defecto es [`.env.example`](.env.example).
+
+> **Spring Boot no lee archivos `.env`.** Exporta las variables en la terminal, configúralas en el
+> IDE o defínelas en la plataforma de despliegue.
 
 ```powershell
-.\gradlew.bat bootRun
+# Windows (PowerShell)
+$env:DB_USERNAME = "postgres"
+$env:DB_PASSWORD = "tu-contrasena"
+$env:JWT_SECRET  = "cadena-larga-y-aleatoria-de-al-menos-32-caracteres"
+$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5434/taskflow"
 ```
+
+```bash
+# Linux / macOS
+export DB_USERNAME="postgres"
+export DB_PASSWORD="tu-contrasena"
+export JWT_SECRET="cadena-larga-y-aleatoria-de-al-menos-32-caracteres"
+export SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:5434/taskflow"
+```
+
+### 3. Arrancar la API
+
+```powershell
+.\gradlew.bat bootRun      # Windows
+```
+
+```bash
+./gradlew bootRun          # Linux / macOS
+```
+
+Flyway aplica las migraciones al arrancar y la API queda escuchando en `http://localhost:8080`
+(modificable con `PORT`).
+
+Comprobación rápida:
+
+```bash
+curl -i http://localhost:8080/tasks
+# HTTP/1.1 401 Unauthorized -> el backend responde y la seguridad está activa
+```
+
+### 4. Primer usuario
+
+Con una base de datos recién migrada **no existe ningún usuario** y el registro público está
+deshabilitado (`POST /users` exige `ROLE_ADMIN`). El primer administrador se crea directamente en
+PostgreSQL; el procedimiento está en **[docs/cuenta-demo.md](docs/cuenta-demo.md)** (Opción B).
+A partir de ahí, el resto de cuentas se crean con `POST /users`, que asigna siempre `ROLE_USER`.
+
+### 5. Compilar el JAR
+
+```powershell
+.\gradlew.bat clean bootJar      # -> build/libs/taskflow-api-0.0.1-SNAPSHOT.jar
+```
+
+```bash
+./gradlew clean bootJar
+```
+
+## Variables de entorno
+
+Todas son opcionales salvo las marcadas como obligatorias. Los valores por defecto están en
+`src/main/resources/application.yaml`.
+
+| Variable | Por defecto | Descripción |
+| --- | --- | --- |
+| `DB_USERNAME` / `DB_PASSWORD` | — (**obligatorias**) | Credenciales de PostgreSQL |
+| `JWT_SECRET` | — (**obligatoria**) | Clave de firma HS256 (32 caracteres mínimo) |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5434/taskflow` | URL JDBC completa |
+| `PORT` | `8080` | Puerto HTTP |
+| `FLYWAY_ENABLED` | `true` | Desactiva las migraciones (solo test de contexto) |
+| `FLYWAY_BASELINE_ON_MIGRATE` | `false` | Adopción de una base existente (ver [docs/base-de-datos.md](docs/base-de-datos.md)) |
+| `LOGIN_RATE_LIMIT_ENABLED` | `true` | Activa el límite de intentos de login |
+| `LOGIN_RATE_LIMIT_WINDOW` | `5m` | Ventana del límite (`30s`, `5m`, `1h`) |
+| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_ACCOUNT` | `5` | Intentos fallidos por `(IP, email)` |
+| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP` | `30` | Intentos fallidos por IP |
+| `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS` | `false` | Lee `X-Forwarded-For` (solo detrás de un proxy de confianza) |
+| `LOGIN_RATE_LIMIT_STORE` | `memory` | `memory` (por instancia) o `redis` (compartido) |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / vacío | Solo con `store=redis` |
+| `TASKFLOW_PG_IT_URL` | sin definir | Solo tests: base de mantenimiento para los tests de Flyway |
 
 ## Pruebas
 
-Para ejecutar las pruebas automatizadas:
-
 ```powershell
-.\gradlew.bat clean test
+.\gradlew.bat clean test      # Windows
 ```
 
-Los tests no necesitan PostgreSQL ni Redis:
+```bash
+./gradlew clean test          # Linux / macOS
+```
 
-- `TaskflowApiApplicationTests` carga el contexto completo con **H2 en memoria**
-  (`ddl-auto: create-drop`, `spring.flyway.enabled=false`) y comprueba que se crean las tablas
-  `users` y `tasks`.
-- El rate limiting se prueba con el almacén en memoria (`LoginAttemptTrackerTest`,
-  `LoginRateLimiterTest`, `LoginBruteForceProtectionTest`) y con un `StringRedisTemplate` simulado
-  (`RedisLoginAttemptStoreTest`), incluido el *fail-open* si Redis no responde.
-- `GlobalExceptionHandlerTest` cubre el mapeo de cada excepción (incluida la traducción por
-  `SQLState`) y `ExceptionHandlingEndpointTest` el contrato HTTP real a través de Spring MVC:
-  validación de DTO y de parámetros, `409`, `403`, `401`, `500` sin datos internos.
+**Resultado actual: 92 tests identificados, 82 ejecutados, 10 omitidos y 0 fallos** (17 clases de
+prueba). Los 10 restantes son los tests de integración de Flyway y se omiten por no disponer de
+`TASKFLOW_PG_IT_URL`. Los 82 ejecutados no necesitan PostgreSQL ni Redis: el test de contexto usa H2
+en memoria y el rate limiting se prueba con el almacén en memoria y con un `StringRedisTemplate`
+simulado.
 
-### Tests de integración con PostgreSQL (Flyway)
-
-Los escenarios que dependen de PostgreSQL real están en
-`src/test/kotlin/com/taskflow/api/migration` y se **omiten** salvo que se indique la base de
-mantenimiento en `TASKFLOW_PG_IT_URL`. El test crea y borra bases desechables `taskflow_it_*` y se
-niega a ejecutarse si la URL no apunta a la base `postgres`:
+Los tests de integración de Flyway (crean y borran bases desechables `taskflow_it_*`) se ejecutan solo
+si se indica una base de mantenimiento:
 
 ```powershell
 $env:TASKFLOW_PG_IT_URL = "jdbc:postgresql://localhost:5434/postgres"
 .\gradlew.bat cleanTest test --tests "com.taskflow.api.migration.*"
 ```
 
-Cubren: base nueva con `V1` y `flyway_schema_history`, base vacía con `baseline-on-migrate`
-(no se marca como existente), adopción de una base existente con baseline conservando los datos,
-base existente sin baseline (falla sin tocar nada), migraciones posteriores en orden, esquema
-incompatible que detiene el arranque sin modificarlo, `validate` de Hibernate sobre el esquema
-migrado y los errores reales de FK (`DELETE /users/{id}` → `409`) y UNIQUE.
+Estrategia y escenarios cubiertos: [docs/testing.md](docs/testing.md).
+
+## Documentación
+
+| Documento | Contenido |
+| --- | --- |
+| [docs/seguridad.md](docs/seguridad.md) | Reglas de acceso, alta de usuarios y rate limiting del login |
+| [docs/base-de-datos.md](docs/base-de-datos.md) | Esquema, migraciones Flyway y adopción de bases existentes |
+| [docs/errores.md](docs/errores.md) | Traducción de excepciones a `ErrorResponse` |
+| [docs/testing.md](docs/testing.md) | Estrategia de pruebas y tests de integración |
+| [docs/cuenta-demo.md](docs/cuenta-demo.md) | Cómo habilitar una cuenta de demostración con rol `USER` |
+
+La documentación del frontend (contratos de API, arquitectura del cliente, sistema de diseño) está en
+[taskflow-frontend › docs](https://github.com/NAHUM099/taskflow-frontend/tree/main/docs).
 
 ## Integración continua
 
-El proyecto utiliza Jenkins para ejecutar la compilación y las pruebas automatizadas mediante el archivo `Jenkinsfile`.
-
-El pipeline obtiene el código desde GitHub, ejecuta las pruebas con Gradle y registra sus resultados.
+El repositorio incluye un `Jenkinsfile` que compila el proyecto y ejecuta la suite de pruebas en cada
+cambio.
 
 ## Estado del proyecto
 
-Proyecto personal de portafolio orientado al desarrollo backend con Kotlin y Spring Boot.
+Backend funcional y estable (MVP completo). Limitaciones conocidas:
+
+- No se genera documentación OpenAPI/Swagger: los contratos están en
+  [api-contracts.md](https://github.com/NAHUM099/taskflow-frontend/blob/main/docs/api-contracts.md).
+- Los tests de integración de Flyway requieren PostgreSQL real y se omiten por defecto.
+- No se mide cobertura con una herramienta dedicada en el backend.
+- Existe un `Dockerfile` para construir y desplegar la imagen de la API; no hay `docker-compose.yml` (el
+  aprovisionamiento local sigue siendo manual).
