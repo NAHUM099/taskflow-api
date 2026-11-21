@@ -118,7 +118,7 @@ class TaskServiceTest {
     @Test
     fun `un USER puede mover el estado de su propia tarea`() {
         val task = task(id = 3L, ownerId = USER_ID)
-        `when`(taskRepository.findById(3L)).thenReturn(Optional.of(task))
+        `when`(taskRepository.findWithUserById(3L)).thenReturn(Optional.of(task))
         `when`(taskRepository.save(task)).thenReturn(task)
 
         val response = taskService.patchStatusTask(
@@ -133,7 +133,7 @@ class TaskServiceTest {
     @Test
     fun `un USER no puede mover el estado de una tarea ajena`() {
         val task = task(id = 3L, ownerId = 8L)
-        `when`(taskRepository.findById(3L)).thenReturn(Optional.of(task))
+        `when`(taskRepository.findWithUserById(3L)).thenReturn(Optional.of(task))
 
         assertThrows(TaskAccessDeniedException::class.java) {
             taskService.patchStatusTask(
@@ -149,7 +149,7 @@ class TaskServiceTest {
     @Test
     fun `un ADMIN puede mover el estado de cualquier tarea`() {
         val task = task(id = 3L, ownerId = 8L)
-        `when`(taskRepository.findById(3L)).thenReturn(Optional.of(task))
+        `when`(taskRepository.findWithUserById(3L)).thenReturn(Optional.of(task))
         `when`(taskRepository.save(task)).thenReturn(task)
 
         val response = taskService.patchStatusTask(

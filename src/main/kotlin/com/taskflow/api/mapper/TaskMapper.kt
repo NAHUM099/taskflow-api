@@ -24,13 +24,17 @@ object TaskMapper {
 
     fun toResponse(taskEntity: TaskEntity) : TaskResponse {
 
+        // El propietario se obtiene una sola vez. Las consultas del repositorio
+        // lo traen inicializado para que este acceso no dependa de OSIV.
+        val owner = taskEntity.user
+
         return TaskResponse(
             id = taskEntity.id,
             title = taskEntity.title,
             description = taskEntity.description,
             status = taskEntity.status,
-            userId = taskEntity.user.id,
-            userName = taskEntity.user.name,
+            userId = owner.id,
+            userName = owner.name,
             createdAt = taskEntity.createdAt
         )
     }

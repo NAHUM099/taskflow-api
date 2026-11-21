@@ -23,9 +23,11 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 
 @Service
+@Transactional(readOnly = true)
 class TaskService (
     private val taskRepository: TaskRepository,
     private val userRepository: UserRepository) {
@@ -41,7 +43,9 @@ class TaskService (
 
     private fun findTaskById(id: Long) : TaskEntity {
 
-        return taskRepository.findById(id)
+        // Se carga el propietario en la misma consulta porque la respuesta
+        // incluye su nombre y la sesión no se mantiene abierta (OSIV off).
+        return taskRepository.findWithUserById(id)
             .orElseThrow {
                 TaskNotFoundException("tarea no encontrada")
             }
@@ -83,6 +87,7 @@ class TaskService (
 
 
 
+    @Transactional
     fun createTask (createTaskRequest: CreateTaskRequest) : TaskResponse {
 
         val user = findUserById(createTaskRequest.userId)
@@ -116,6 +121,7 @@ class TaskService (
     }
 
 
+    @Transactional
     fun patchStatusTask (id : Long, statusRequest: StatusRequest, authentication: Authentication) : TaskResponse{
 
         val task = findTaskById(id)

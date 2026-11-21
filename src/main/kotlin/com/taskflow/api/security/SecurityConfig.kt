@@ -1,7 +1,9 @@
 package com.taskflow.api.security
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.AuthenticationProvider
@@ -18,9 +20,11 @@ import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
+@EnableConfigurationProperties(CorsProperties::class)
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    private val securityErrorHandler: SecurityErrorHandler
+    private val securityErrorHandler: SecurityErrorHandler,
+    private val corsProperties: CorsProperties
 ) {
 
     @Bean
@@ -91,7 +95,12 @@ class SecurityConfig(
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
 
-        configuration.allowedOrigins = listOf("http://localhost:3000", "https://taskflow-frontend-ashen.vercel.app")
+        // Los orígenes se configuran por entorno. No se usa "*": un origen
+        // comodín permitiría que cualquier sitio llamara a la API con el JWT
+        // del usuario desde el navegador.
+        configuration.allowedOrigins = corsProperties.allowedOrigins.map { origin ->
+            origin.trim().trimEnd('/')
+        }
         configuration.allowedMethods = listOf(
             "GET",
             "POST",
@@ -100,7 +109,14 @@ class SecurityConfig(
             "DELETE",
             "OPTIONS"
         )
-        configuration.allowedHeaders = listOf("*")
+        configuration.allowedHeaders = listOf(
+            HttpHeaders.AUTHORIZATION,
+            HttpHeaders.CONTENT_TYPE,
+            HttpHeaders.ACCEPT
+        )
+        // El navegador solo puede leer Retry-After del 429 si el backend lo
+        // expone explícitamente en CORS.
+        configuration.exposedHeaders = listOf(HttpHeaders.RETRY_AFTER)
 
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", configuration)

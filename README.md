@@ -39,6 +39,8 @@ Este repositorio es el backend; la interfaz web vive en
 - **Usuarios** (solo `ADMIN`): listado paginado con búsqueda, alta, edición, cambio de contraseña,
   activación/desactivación y borrado protegido por la clave foránea de sus tareas.
 - **Rate limiting del login** por `(IP, email)` y por `IP`, con almacén en memoria o Redis.
+- **CORS configurable por entorno** (`CORS_ALLOWED_ORIGINS`), sin comodines y con `Retry-After`
+  expuesto para que el frontend pueda leer el `429`.
 - **Contrato de errores único** (`ErrorResponse`) para validación, seguridad, conflictos e
   integridad de datos, sin filtrar detalles internos.
 - **Migraciones Flyway** versionadas; Hibernate solo valida el esquema (`ddl-auto: validate`).
@@ -70,10 +72,15 @@ Controller  ──►  Service  ──►  Repository  ──►  PostgreSQL
 
 - **`controller`**: expone los endpoints y traduce peticiones a DTOs; sin lógica de negocio.
 - **`service`**: reglas de negocio, control de acceso a nivel de recurso y transacciones.
-- **`repository`**: acceso a datos con Spring Data JPA (paginación y búsquedas derivadas).
-- **`security`**: filtro JWT, provisión de usuarios, rate limiting y manejo de `401`/`403`.
+- **`repository`**: acceso a datos con Spring Data JPA (paginación, búsquedas derivadas y
+  `EntityGraph` para cargar el propietario sin N+1).
+- **`security`**: filtro JWT, provisión de usuarios, rate limiting, CORS y manejo de `401`/`403`.
 - **`exception`**: `GlobalExceptionHandler` convierte cualquier excepción en `ErrorResponse`.
 - **`db/migration`**: migraciones Flyway, única fuente de verdad del esquema.
+
+La sesión de Hibernate no se mantiene abierta (`spring.jpa.open-in-view: false`): las consultas que
+necesitan el propietario lo cargan con `EntityGraph` o `JOIN FETCH` dentro de la transacción del
+servicio.
 
 La arquitectura de la aplicación completa está descrita en
 [docs/architecture.md](https://github.com/NAHUM099/taskflow-frontend/blob/main/docs/architecture.md)
@@ -180,6 +187,21 @@ A partir de ahí, el resto de cuentas se crean con `POST /users`, que asigna sie
 ./gradlew clean bootJar
 ```
 
+### 6. Docker Compose (opcional)
+
+`docker-compose.yml` levanta PostgreSQL y la API en la misma red, aplica Flyway al arrancar y publica
+ambos servicios solo en loopback. Define `POSTGRES_PASSWORD` y `JWT_SECRET` en el entorno (o en un
+`.env` local que no se versiona):
+
+```powershell
+$env:POSTGRES_PASSWORD = "una-contrasena-local"
+$env:JWT_SECRET = "cadena-larga-y-aleatoria-de-al-menos-32-caracteres"
+docker compose up --build
+```
+
+La API queda en `http://localhost:8080` y PostgreSQL en `localhost:5434`. Los datos persisten en el
+volumen `taskflow-postgres-data`; para eliminarlos, `docker compose down -v`.
+
 ## Variables de entorno
 
 Todas son opcionales salvo las marcadas como obligatorias. Los valores por defecto están en
@@ -191,6 +213,7 @@ Todas son opcionales salvo las marcadas como obligatorias. Los valores por defec
 | `JWT_SECRET` | — (**obligatoria**) | Clave de firma HS256 (32 caracteres mínimo) |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5434/taskflow` | URL JDBC completa |
 | `PORT` | `8080` | Puerto HTTP |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Orígenes del frontend separados por comas; no se admiten comodines |
 | `FLYWAY_ENABLED` | `true` | Desactiva las migraciones (solo test de contexto) |
 | `FLYWAY_BASELINE_ON_MIGRATE` | `false` | Adopción de una base existente (ver [docs/base-de-datos.md](docs/base-de-datos.md)) |
 | `LOGIN_RATE_LIMIT_ENABLED` | `true` | Activa el límite de intentos de login |
@@ -212,11 +235,25 @@ Todas son opcionales salvo las marcadas como obligatorias. Los valores por defec
 ./gradlew clean test          # Linux / macOS
 ```
 
-**Resultado actual: 92 tests identificados, 82 ejecutados, 10 omitidos y 0 fallos** (17 clases de
-prueba). Los 10 restantes son los tests de integración de Flyway y se omiten por no disponer de
-`TASKFLOW_PG_IT_URL`. Los 82 ejecutados no necesitan PostgreSQL ni Redis: el test de contexto usa H2
+**Resultado actual: 105 tests identificados, 95 ejecutados, 10 omitidos y 0 fallos** (19 clases de
+prueba). Los 10 omitidos son los tests de integración de Flyway: se ejecutan solo cuando se define
+`TASKFLOW_PG_IT_URL`. Los 95 ejecutados no necesitan PostgreSQL ni Redis: el test de contexto usa H2
 en memoria y el rate limiting se prueba con el almacén en memoria y con un `StringRedisTemplate`
 simulado.
+
+La cobertura se genera con JaCoCo:
+
+```powershell
+.\gradlew.bat coverage      # Windows
+```
+
+```bash
+./gradlew coverage          # Linux / macOS
+```
+
+**Cobertura actual: 72,68% de líneas, 50,85% de ramas y 70,02% de instrucciones** (19 clases). El
+reporte HTML queda en `build/reports/jacoco/test/html/index.html`; `coverage` ejecuta la suite y
+`test` deja el reporte generado al finalizar.
 
 Los tests de integración de Flyway (crean y borran bases desechables `taskflow_it_*`) se ejecutan solo
 si se indica una base de mantenimiento:
@@ -253,6 +290,8 @@ Backend funcional y estable (MVP completo). Limitaciones conocidas:
 - No se genera documentación OpenAPI/Swagger: los contratos están en
   [api-contracts.md](https://github.com/NAHUM099/taskflow-frontend/blob/main/docs/api-contracts.md).
 - Los tests de integración de Flyway requieren PostgreSQL real y se omiten por defecto.
-- No se mide cobertura con una herramienta dedicada en el backend.
-- Existe un `Dockerfile` para construir y desplegar la imagen de la API; no hay `docker-compose.yml` (el
-  aprovisionamiento local sigue siendo manual).
+- La cobertura se mide con JaCoCo, pero todavía no hay un umbral mínimo que bloquee el build.
+- Existen `Dockerfile` y `docker-compose.yml` para construir y ejecutar API + PostgreSQL; el despliegue
+  de producción sigue en Render con PostgreSQL gestionado.
+- Los timestamps se guardan como `LocalDateTime` sin zona horaria; la migración a `timestamptz` queda
+  pendiente para no reinterpretar datos existentes.

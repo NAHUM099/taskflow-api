@@ -3,6 +3,7 @@ plugins {
 	kotlin("plugin.spring") version "1.9.25"
 	id("org.springframework.boot") version "3.5.14"
 	id("io.spring.dependency-management") version "1.1.7"
+	jacoco
 }
 
 group = "com.taskflow"
@@ -66,6 +67,33 @@ kotlin {
 	}
 }
 
+jacoco {
+	// Versión compatible con Java 21 y con el bytecode generado por Kotlin 1.9.
+	toolVersion = "0.8.12"
+}
+
 tasks.withType<Test> {
 	useJUnitPlatform()
+	// Ejecutar `test` (o `build`) deja siempre el reporte de cobertura listo.
+	finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+	dependsOn(tasks.test)
+
+	reports {
+		xml.required.set(true)
+		html.required.set(true)
+		csv.required.set(false)
+	}
+}
+
+/**
+ * Atajo explícito para la validación local y CI:
+ * `./gradlew coverage` ejecuta los tests y genera HTML + XML.
+ */
+tasks.register("coverage") {
+	group = "verification"
+	description = "Ejecuta los tests y genera el reporte de cobertura JaCoCo (HTML y XML)."
+	dependsOn(tasks.jacocoTestReport)
 }
