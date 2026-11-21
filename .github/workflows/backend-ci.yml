@@ -1,0 +1,110 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: taskflow_ci
+          POSTGRES_PASSWORD: taskflow_ci_password
+          POSTGRES_DB: taskflow_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taskflow_ci -d taskflow_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_USERNAME: taskflow_ci
+      DB_PASSWORD: taskflow_ci_password
+      JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789abcdef0123456789abcdef
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/taskflow_ci
+      TASKFLOW_PG_IT_URL: jdbc:postgresql://localhost:5432/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Run unit and PostgreSQL integration tests
+        run: ./gradlew cleanTest test --no-daemon
+
+      - name: Verify 92 tests with no skips or failures
+        if: always()
+        env:
+          EXPECTED_TESTS: "92"
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+
+          files = sorted(glob.glob("build/test-results/test/TEST-*.xml"))
+          if not files:
+              print("No JUnit results found in build/test-results/test")
+              sys.exit(1)
+
+          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          for path in files:
+              root = ET.parse(path).getroot()
+              for key in totals:
+                  totals[key] += int(root.attrib.get(key, 0))
+
+          expected = int(os.environ["EXPECTED_TESTS"])
+          print(
+              f"Results: {totals['tests']} tests, "
+              f"{totals['failures']} failures, {totals['errors']} errors, "
+              f"{totals['skipped']} skipped (expected {expected})"
+          )
+
+          if totals["tests"] != expected:
+              print(f"Expected {expected} tests, found {totals['tests']}")
+              sys.exit(1)
+          if totals["failures"] or totals["errors"] or totals["skipped"]:
+              print("The suite must have 0 failures, 0 errors and 0 skipped tests")
+              sys.exit(1)
+          PY
+
+      - name: Build bootJar
+        run: ./gradlew bootJar --no-daemon
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports
+          path: |
+            build/test-results/test
+            build/reports/tests/test
+          if-no-files-found: warn
+          retention-days: 14
