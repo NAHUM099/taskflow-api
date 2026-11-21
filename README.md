@@ -221,6 +221,7 @@ Todas son opcionales salvo las marcadas como obligatorias. Los valores por defec
 | `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_ACCOUNT` | `5` | Intentos fallidos por `(IP, email)` |
 | `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP` | `30` | Intentos fallidos por IP |
 | `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS` | `false` | Lee `X-Forwarded-For` (solo detrás de un proxy de confianza) |
+| `LOGIN_RATE_LIMIT_TRUSTED_PROXIES` | vacío | IPs/CIDR de proxies de confianza; obligatorio si `trust-forwarded-headers=true` |
 | `LOGIN_RATE_LIMIT_STORE` | `memory` | `memory` (por instancia) o `redis` (compartido) |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / vacío | Solo con `store=redis` |
 | `TASKFLOW_PG_IT_URL` | sin definir | Solo tests: base de mantenimiento para los tests de Flyway |
@@ -235,9 +236,9 @@ Todas son opcionales salvo las marcadas como obligatorias. Los valores por defec
 ./gradlew clean test          # Linux / macOS
 ```
 
-**Resultado actual: 105 tests identificados, 95 ejecutados, 10 omitidos y 0 fallos** (19 clases de
+**Resultado actual: 123 tests identificados, 113 ejecutados, 10 omitidos y 0 fallos** (20 clases de
 prueba). Los 10 omitidos son los tests de integración de Flyway: se ejecutan solo cuando se define
-`TASKFLOW_PG_IT_URL`. Los 95 ejecutados no necesitan PostgreSQL ni Redis: el test de contexto usa H2
+`TASKFLOW_PG_IT_URL`. Los 113 ejecutados no necesitan PostgreSQL ni Redis: el test de contexto usa H2
 en memoria y el rate limiting se prueba con el almacén en memoria y con un `StringRedisTemplate`
 simulado.
 
@@ -251,7 +252,7 @@ La cobertura se genera con JaCoCo:
 ./gradlew coverage          # Linux / macOS
 ```
 
-**Cobertura actual: 72,68% de líneas, 50,85% de ramas y 70,02% de instrucciones** (19 clases). El
+**Cobertura actual: 74,60% de líneas, 58,74% de ramas y 72,44% de instrucciones** (20 clases). El
 reporte HTML queda en `build/reports/jacoco/test/html/index.html`; `coverage` ejecuta la suite y
 `test` deja el reporte generado al finalizar.
 

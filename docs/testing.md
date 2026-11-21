@@ -12,9 +12,9 @@ Para ejecutar las pruebas automatizadas y generar la cobertura:
 ./gradlew clean coverage
 ```
 
-**Resultado actual: 105 tests identificados, 95 ejecutados, 10 omitidos y 0 fallos** (19 clases).
+**Resultado actual: 123 tests identificados, 113 ejecutados, 10 omitidos y 0 fallos** (20 clases).
 JaCoCo deja el reporte HTML en `build/reports/jacoco/test/html/index.html`; la cobertura actual es
-**72,68% de líneas, 50,85% de ramas y 70,02% de instrucciones**. `test` también genera el reporte al
+**74,60% de líneas, 58,74% de ramas y 72,44% de instrucciones**. `test` también genera el reporte al
 finalizar; `coverage` es el atajo que ejecuta la suite y el reporte de forma explícita.
 
 Los tests no necesitan PostgreSQL ni Redis:
@@ -27,7 +27,8 @@ Los tests no necesitan PostgreSQL ni Redis:
   `Retry-After`; `RequestValidationTest` cubre las restricciones de los DTO.
 - El rate limiting se prueba con el almacén en memoria (`LoginAttemptTrackerTest`,
   `LoginRateLimiterTest`, `LoginBruteForceProtectionTest`) y con un `StringRedisTemplate` simulado
-  (`RedisLoginAttemptStoreTest`), incluido el *fail-open* si Redis no responde.
+  (`RedisLoginAttemptStoreTest`), incluido el *fail-open* si Redis no responde. `ClientIpResolverTest`
+  cubre la cadena de proxies, los rangos CIDR y las cabeceras inválidas.
 - `GlobalExceptionHandlerTest` cubre el mapeo de cada excepción (incluida la traducción por
   `SQLState`) y `ExceptionHandlingEndpointTest` el contrato HTTP real a través de Spring MVC:
   validación de DTO y de parámetros, `409`, `403`, `401`, `500` sin datos internos.
