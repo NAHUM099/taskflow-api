@@ -18,12 +18,26 @@ data class LoginRateLimitProperties(
     val maxAttemptsPerIp: Int = 30,
     val trustForwardedHeaders: Boolean = false,
     /**
+     * IPs o rangos CIDR de los proxies de confianza. Es obligatorio cuando
+     * `trustForwardedHeaders=true`: el arranque falla si está vacío, porque
+     * confiar en `X-Forwarded-For` sin saber qué proxy lo añade permite
+     * falsificar la identidad. El header solo se lee cuando `remoteAddr`
+     * pertenece a uno de estos proxies y los proxies de confianza se
+     * descartan de derecha a izquierda. `ClientIpResolver` rechaza rangos
+     * demasiado amplios (IPv4 con prefijo menor que /16, IPv6 menor que /32).
+     */
+    val trustedProxies: List<String> = emptyList(),
+    /**
      * Dónde se guardan los contadores: `memory` (una instancia) o `redis`
      * (estado compartido entre réplicas).
      */
     val store: LoginAttemptStoreType = LoginAttemptStoreType.MEMORY
 ) {
     init {
+        require(!trustForwardedHeaders || trustedProxies.any(String::isNotBlank)) {
+            "taskflow.security.login-rate-limit.trusted-proxies debe contener al menos un proxy " +
+                "cuando taskflow.security.login-rate-limit.trust-forwarded-headers=true"
+        }
         require(!window.isNegative && !window.isZero) {
             "taskflow.security.login-rate-limit.window debe ser mayor que cero"
         }

@@ -61,6 +61,7 @@ Configuración en `application.yaml`, ajustable por entorno:
 | `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_ACCOUNT` | `5` | Intentos fallidos por `(IP, email)` y ventana |
 | `LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP` | `30` | Intentos fallidos por IP y ventana |
 | `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS` | `false` | Lee `X-Forwarded-For`; activar solo detrás de un proxy de confianza |
+| `LOGIN_RATE_LIMIT_TRUSTED_PROXIES` | vacío | IPs/CIDR de proxies de confianza; obligatorio si `trust-forwarded-headers=true` |
 | `LOGIN_RATE_LIMIT_STORE` | `memory` | `memory` o `redis` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / vacío | Solo se usan con `store=redis` |
 
@@ -71,6 +72,11 @@ Limitaciones conocidas:
   classpath, pero si no se activa no se abre ninguna conexión.
 - Si Redis no responde, el limiter aplica *fail-open* (`WARN` en el log y el login sigue): una caída
   del caché no debe dejar a todo el mundo sin poder entrar.
-- Si el backend está detrás de un proxy, `remoteAddr` es la IP del proxy. En ese caso hay que
-  activar `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS=true`; activarlo sin proxy permite falsificar
-  el header y eludir el límite.
+- Si el backend está detrás de un proxy, `remoteAddr` es la IP del proxy. Hay que activar
+  `LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS=true` y definir `LOGIN_RATE_LIMIT_TRUSTED_PROXIES` con
+  las IPs/CIDR del proxy. El resolver solo lee `X-Forwarded-For` cuando `remoteAddr` pertenece a esa
+  lista, descarta de derecha a izquierda los proxies de confianza y rechaza rangos demasiado amplios
+  (IPv4 menor que /16, IPv6 menor que /32) y valores que no sean IPs literales. Si toda la cadena es
+  de confianza, usa `remoteAddr` para no agrupar clientes bajo una clave falsa.
+- Activar `trust-forwarded-headers=true` sin un proxy real, o confiar en un rango que incluya
+  clientes, permite falsificar el header y eludir el límite.

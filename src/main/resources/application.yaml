@@ -60,6 +60,10 @@ taskflow:
       max-attempts-per-ip: ${LOGIN_RATE_LIMIT_MAX_ATTEMPTS_PER_IP:30}
       # Activar solo si hay un proxy de confianza delante (Railway, Render, nginx...).
       trust-forwarded-headers: ${LOGIN_RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+      # Obligatorio si trust-forwarded-headers=true: IPs/CIDR separados por comas.
+      # El arranque falla si está vacío. Se rechazan rangos IPv4 con prefijo
+      # menor que /16 e IPv6 menor que /32 para no confiar en redes de clientes.
+      trusted-proxies: ${LOGIN_RATE_LIMIT_TRUSTED_PROXIES:}
       # memory = estado por instancia; redis = estado compartido entre réplicas.
       store: ${LOGIN_RATE_LIMIT_STORE:memory}
 

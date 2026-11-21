@@ -39,4 +39,18 @@ class LoginRateLimitConfigTest {
                     .isInstanceOf(RedisLoginAttemptStore::class.java)
             }
     }
+
+    @Test
+    fun `con trust activo y trusted-proxies vacio el contexto falla`() {
+        contextRunner
+            .withPropertyValues(
+                "${LoginRateLimitProperties.PREFIX}.trust-forwarded-headers=true",
+                "${LoginRateLimitProperties.PREFIX}.trusted-proxies="
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                assertThat(context.startupFailure)
+                    .hasStackTraceContaining("trusted-proxies")
+            }
+    }
 }

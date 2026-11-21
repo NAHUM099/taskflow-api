@@ -58,10 +58,10 @@ jobs:
       - name: Run unit and PostgreSQL integration tests
         run: ./gradlew cleanTest test --no-daemon
 
-      - name: Verify 92 tests with no skips or failures
+      - name: Verify 123 tests with no skips or failures
         if: always()
         env:
-          EXPECTED_TESTS: "92"
+          EXPECTED_TESTS: "123"
         run: |
           python3 - <<'PY'
           import glob

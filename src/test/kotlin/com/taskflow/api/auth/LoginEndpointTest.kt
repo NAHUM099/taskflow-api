@@ -7,11 +7,13 @@ import com.taskflow.api.security.SecurityErrorHandler
 import com.taskflow.api.security.TaskFlowUserDetailsService
 import com.taskflow.api.security.ratelimit.ClientIpResolver
 import com.taskflow.api.security.ratelimit.LoginRateLimitConfig
+import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
@@ -72,6 +74,26 @@ class LoginEndpointTest {
             .andExpect(
                 jsonPath("$.message")
                     .value("Demasiados intentos de inicio de sesión. Inténtalo de nuevo en 30 segundos.")
+            )
+    }
+
+    @Test
+    fun `el 429 expone Retry-After a un origen permitido`() {
+        `when`(authService.login(credentials, LOCALHOST))
+            .thenThrow(TooManyLoginAttemptsException(30))
+
+        mockMvc.perform(
+            post("/auth/login")
+                .header(HttpHeaders.ORIGIN, "http://localhost:3000")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(BODY)
+        )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(
+                header().string(
+                    HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                    containsString(HttpHeaders.RETRY_AFTER)
+                )
             )
     }
 
