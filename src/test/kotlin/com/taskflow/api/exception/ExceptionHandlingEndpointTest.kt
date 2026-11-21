@@ -1,5 +1,6 @@
 package com.taskflow.api.exception
 
+import com.taskflow.api.dto.task.StatusRequest
 import com.taskflow.api.dto.user.CreateUserRequest
 import com.taskflow.api.enums.TaskStatus
 import com.taskflow.api.exception.classException.EmailAlreadyExistsException
@@ -73,6 +74,49 @@ class ExceptionHandlingEndpointTest {
                 jsonPath("$.details.password").value("la contraseña debe tener minimo 6 caracteres")
             )
             .andExpect(content().string(not(containsString("com.taskflow"))))
+    }
+
+    @Test
+    fun `un email vacio al crear un usuario devuelve 400`() {
+        mockMvc.perform(
+            post("/probe/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Ana","email":"   ","password":"secreta123"}""")
+        )
+            .andExpect(status().isBadRequest)
+            // Un email de espacios incumple @NotBlank y @Email a la vez; el
+            // orden de los mensajes no forma parte del contrato. Lo relevante
+            // es que se rechaza y se identifica el campo.
+            .andExpect(jsonPath("$.details.email").isNotEmpty())
+    }
+
+    @Test
+    fun `un JSON malformado devuelve 400 generico sin detalles de Jackson`() {
+        mockMvc.perform(
+            post("/probe/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Ana",""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud no es válido"))
+            .andExpect(content().string(not(containsString("com.fasterxml"))))
+            .andExpect(content().string(not(containsString("JsonParseException"))))
+            .andExpect(content().string(not(containsString("Unexpected character"))))
+    }
+
+    @Test
+    fun `un enum invalido en el cuerpo devuelve 400 generico`() {
+        mockMvc.perform(
+            post("/probe/tasks/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"INVENTADO"}""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud no es válido"))
+            .andExpect(content().string(not(containsString("TaskStatus"))))
+            .andExpect(content().string(not(containsString("INVENTADO"))))
     }
 
     @Test
@@ -175,6 +219,9 @@ class ExceptionHandlingEndpointTest {
 
         @GetMapping("/probe/tasks")
         fun tasks(@RequestParam(required = false) status: TaskStatus?): String = "ok"
+
+        @PostMapping("/probe/tasks/status")
+        fun status(@Valid @RequestBody request: StatusRequest): String = "ok"
 
         @GetMapping("/probe/dto")
         fun dto(): Map<String, Any> = mapOf("id" to 1, "message" to "ok")

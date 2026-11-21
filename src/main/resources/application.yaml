@@ -8,10 +8,19 @@ spring:
     password : ${DB_PASSWORD}
 
   jpa:
+    # Las transacciones se delimitan en los servicios. Sin OSIV, una relación
+    # LAZY no puede inicializarse fuera de la transacción ni desde la capa web.
+    open-in-view: false
     hibernate:
       # Hibernate solo comprueba que el esquema coincide con las entidades:
       # nunca crea ni modifica tablas. El esquema lo administra Flyway.
       ddl-auto: validate
+
+  jackson:
+    serialization:
+      # LocalDateTime se serializa como ISO-8601 (sin offset) hasta que se
+      # pueda verificar la zona horaria de los datos existentes.
+      write-dates-as-timestamps: false
 
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
@@ -36,6 +45,12 @@ jwt:
   expiration: 3600000
 
 taskflow:
+  cors:
+    # Orígenes permitidos, separados por comas. No se admiten comodines.
+    # En Render debe definirse CORS_ALLOWED_ORIGINS con el origen real del
+    # frontend; este valor por defecto es solo para desarrollo local.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
   security:
     # Rate limiting del endpoint /auth/login.
     login-rate-limit:

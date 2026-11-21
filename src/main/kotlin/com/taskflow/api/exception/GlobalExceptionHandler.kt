@@ -202,15 +202,20 @@ class GlobalExceptionHandler {
         request: HttpServletRequest
     ) : ResponseEntity<ErrorResponse> {
 
-        val response = ErrorResponse(
-            timestamp = LocalDateTime.now(),
-            status = HttpStatus.BAD_REQUEST.value(),
-            message = ex.message ?: "status invalidos",
-            path = request.requestURI
+        // Jackson incluye nombres de clases, campos y valores en el mensaje.
+        // Ese detalle solo se registra en el servidor; el cliente recibe un
+        // mensaje genérico que no revela la implementación del backend.
+        logger.warn(
+            "Cuerpo de solicitud ilegible en {} {}",
+            request.method,
+            request.requestURI,
+            ex
         )
 
-        return ResponseEntity(
-            response, HttpStatus.BAD_REQUEST
+        return errorResponse(
+            request,
+            HttpStatus.BAD_REQUEST,
+            "El cuerpo de la solicitud no es válido"
         )
     }
 

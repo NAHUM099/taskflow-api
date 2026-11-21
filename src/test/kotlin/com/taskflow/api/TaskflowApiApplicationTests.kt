@@ -1,12 +1,24 @@
 package com.taskflow.api
 
+import com.taskflow.api.dto.task.TaskFilter
+import com.taskflow.api.entity.TaskEntity
+import com.taskflow.api.entity.UserEntity
+import com.taskflow.api.repository.TaskRepository
+import com.taskflow.api.repository.UserRepository
 import com.taskflow.api.security.ratelimit.LoginAttemptStore
 import com.taskflow.api.security.ratelimit.LoginAttemptTracker
+import com.taskflow.api.service.TaskService
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.core.env.Environment
+import org.springframework.data.domain.PageRequest
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.context.TestPropertySource
 import javax.sql.DataSource
 
@@ -38,6 +50,60 @@ class TaskflowApiApplicationTests {
 
     @Autowired
     private lateinit var loginAttemptStore: LoginAttemptStore
+
+    @Autowired
+    private lateinit var environment: Environment
+
+    @Autowired
+    private lateinit var userRepository: UserRepository
+
+    @Autowired
+    private lateinit var taskRepository: TaskRepository
+
+    @Autowired
+    private lateinit var taskService: TaskService
+
+    @Test
+    fun `la configuracion desactiva Open Session In View`() {
+        assertFalse(
+            environment.getProperty("spring.jpa.open-in-view", Boolean::class.java, true),
+            "OSIV debe estar desactivado para que las transacciones vivan en los servicios"
+        )
+    }
+
+    @Test
+    fun `el listado de tareas mapea el propietario LAZY sin OSIV`() {
+        val owner = userRepository.save(
+            UserEntity(
+                name = "Ana Torres",
+                email = "ana-osiv@taskflow.dev",
+                passwordHash = "hash"
+            )
+        )
+        taskRepository.save(
+            TaskEntity(
+                title = "Tarea sin OSIV",
+                description = "Descripcion de prueba",
+                user = owner
+            )
+        )
+
+        val authentication = UsernamePasswordAuthenticationToken(
+            owner.email,
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_ADMIN"))
+        )
+
+        val page = taskService.getTasks(
+            TaskFilter(status = null, userId = null),
+            PageRequest.of(0, 10),
+            authentication
+        )
+
+        assertEquals(1, page.totalElements)
+        assertEquals(owner.name, page.content.first().userName)
+        assertEquals(owner.id, page.content.first().userId)
+    }
 
     @Test
     fun `el contexto arranca y crea el esquema en una base de datos en memoria`() {

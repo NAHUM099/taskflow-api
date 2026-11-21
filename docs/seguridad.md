@@ -12,6 +12,16 @@ Reglas de acceso, alta de usuarios y protección del login. Resumen del proyecto
   lleva autenticación válida (token ausente, malformado, expirado o de usuario inactivo) y `403`
   cuando el usuario está autenticado pero no tiene permisos.
 
+## CORS
+
+Los orígenes del frontend se configuran con `CORS_ALLOWED_ORIGINS` (lista separada por comas). No se
+admite `*`: un comodín permitiría que cualquier sitio usara el JWT del usuario desde el navegador. La
+configuración recorta espacios y barras finales, registra CORS en la cadena de seguridad y expone
+`Retry-After` para que el cliente pueda leer el `429` del rate limiting.
+
+En local el valor por defecto es `http://localhost:3000`; en Render debe definirse el origen real del
+frontend desplegado.
+
 ## Alta de usuarios (`POST /users`)
 
 Solo un `ADMIN` autenticado puede crear cuentas. El cuerpo (`CreateUserRequest`) no incluye el
